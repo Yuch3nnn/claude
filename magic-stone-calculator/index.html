@@ -70,6 +70,7 @@
   button.danger { background: var(--accent2); }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
   .field { flex: 1; min-width: 110px; }
+  .grid6 .field { min-width: 0; }
   .form-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
@@ -294,7 +295,7 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.03.1";
+const BUILT_VERSION = "2026.07.03.2";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
