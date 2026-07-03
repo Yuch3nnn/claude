@@ -296,7 +296,7 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.03.3";
+const BUILT_VERSION = "2026.07.03.4";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
@@ -599,13 +599,27 @@ function clearAll() {
   renderStoneTable();
 }
 
+// 造型分組（依 SHAPES 定義順序）、同造型內依紅→金→紫排序，方便使用者掃視清單。
+const SHAPE_SORT_INDEX = {};
+SHAPES.forEach((s, i) => { SHAPE_SORT_INDEX[s] = i; });
+const COLOR_SORT_ORDER = ['紅', '金', '紫'];
+const COLOR_SORT_INDEX = {};
+COLOR_SORT_ORDER.forEach((c, i) => { COLOR_SORT_INDEX[c] = i; });
+function sortedStonesForDisplay() {
+  return [...stones].sort((a, b) => {
+    const shapeDiff = (SHAPE_SORT_INDEX[a.shape] ?? 0) - (SHAPE_SORT_INDEX[b.shape] ?? 0);
+    if (shapeDiff !== 0) return shapeDiff;
+    return (COLOR_SORT_INDEX[a.color] ?? 0) - (COLOR_SORT_INDEX[b.color] ?? 0);
+  });
+}
+
 function renderStoneTable() {
   const tbody = document.getElementById('stoneTbody');
   const liveIds = new Set(stones.map(s => s.id));
   for (const id of Array.from(selectedStoneIds)) {
     if (!liveIds.has(id)) selectedStoneIds.delete(id);
   }
-  tbody.innerHTML = stones.map(s => {
+  tbody.innerHTML = sortedStonesForDisplay().map(s => {
     const baseTxt = s.baseLines.map(bl => `${escapeHtml(bl.attr)} ${bl.kind==='flat'?'+':'+'}${escapeHtml(bl.value)}${bl.kind==='percent'?'%':''}`).join('｜');
     const safeId = Number(s.id) || 0;
     const checked = selectedStoneIds.has(s.id) ? 'checked' : '';
@@ -671,12 +685,17 @@ function toggleManualExplain() {
 }
 
 // ---------- import/export ----------
+function timestampForFilename() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+}
 function exportJson() {
   const data = {stones, charBase};
   const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'magic-stones.json';
+  a.href = url; a.download = `magic-stones_${timestampForFilename()}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -1131,6 +1150,16 @@ function checkVersion() {
     })
     .catch(() => {});
 }
+
+// ---------- 關閉前提醒匯出 JSON ----------
+// 資料只存在這台瀏覽器的 localStorage，換電腦/清瀏覽器資料就會遺失，
+// 所以關閉分頁前提醒使用者記得匯出備份。瀏覽器基於安全限制不允許
+// 自訂這個對話框的文字內容，只會顯示瀏覽器內建的通用提示。
+window.addEventListener('beforeunload', function (e) {
+  if (stones.length === 0) return;
+  e.preventDefault();
+  e.returnValue = '';
+});
 
 // ---------- boot ----------
 loadAll();
