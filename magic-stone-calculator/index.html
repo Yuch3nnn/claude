@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勇者來開團 魔石配置計算器</title>
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --panel: #22223a;
+    --panel2: #2a2a45;
+    --border: #3d3d5c;
+    --text: #e8e8f0;
+    --muted: #9999b3;
+    --accent: #7c5cff;
+    --accent2: #ff5c8a;
+    --gold: #ffd75c;
+    --red: #ff6b6b;
+    --purple: #b06bff;
+    --green: #5cffb0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Microsoft JhengHei", "Segoe UI", sans-serif;
+    margin: 0;
+    padding: 20px;
+    line-height: 1.5;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 16px; color: var(--accent); border-left: 4px solid var(--accent); padding-left: 8px; margin-top: 0; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .grid6 {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+  @media (max-width: 900px) { .grid6 { grid-template-columns: repeat(3, 1fr); } }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  input[type=number], input[type=text], select {
+    width: 100%;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--panel2); border: 1px solid var(--border); }
+  button.danger { background: var(--accent2); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+  .field { flex: 1; min-width: 110px; }
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:hover { background: rgba(255,255,255,0.03); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .tag-圓, .tag-三角, .tag-菱形, .tag-六邊形, .tag-星星型, .tag-月亮型 { background: #3d3d5c; }
+  .tag-紫 { background: rgba(176,107,255,0.25); color: var(--purple); }
+  .tag-金 { background: rgba(255,215,92,0.25); color: var(--gold); }
+  .tag-紅 { background: rgba(255,107,107,0.25); color: var(--red); }
+  .checkbox-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .result-card {
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .result-card.top1 { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold); }
+  .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .score { font-size: 18px; font-weight: 700; color: var(--gold); }
+  .stone-chip { display: inline-block; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; margin: 2px; font-size: 11.5px; }
+  .attr-table { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 8px; }
+  .attr-cell { background: var(--bg); border-radius: 5px; padding: 6px; text-align: center; }
+  .attr-cell .name { font-size: 11px; color: var(--muted); }
+  .attr-cell .val { font-size: 14px; font-weight: 700; }
+  #assumptions { font-size: 12px; color: var(--muted); }
+  #assumptions li { margin-bottom: 4px; }
+  .actions button { margin-right: 6px; }
+  .small { font-size: 11px; padding: 3px 8px; }
+  #warnBox { color: var(--accent2); font-size: 12px; margin-top: 8px; display:none; }
+</style>
+</head>
+<body>
+
+<h1>⚔️ 勇者來開團 — 魔石配置計算器</h1>
+<div class="sub">輸入角色基本素質與擁有的魔石清單，用窮舉法算出 5 顆最佳搭配組合。所有資料儲存在瀏覽器本機（localStorage），不會上傳。</div>
+
+<div class="panel">
+  <h2>① 存檔管理（多使用者）</h2>
+  <div class="row">
+    <div class="field" style="max-width:220px;">
+      <label>目前存檔</label>
+      <select id="profileSelect" onchange="onProfileSelectChange()"></select>
+    </div>
+    <button class="secondary" onclick="newProfile()">＋ 新增存檔</button>
+    <button class="secondary" onclick="renameProfile()">重新命名</button>
+    <button class="danger" onclick="deleteProfile()">刪除此存檔</button>
+  </div>
+  <div class="hint">資料儲存在這台瀏覽器的本機空間，不同名稱的存檔彼此獨立、互不影響。若要換電腦或分享給別人，請用下方「匯出/匯入 JSON」搬移資料。</div>
+</div>
+
+<div class="panel">
+  <h2>② 角色基本素質</h2>
+  <div class="grid6" id="charBaseGrid"></div>
+</div>
+
+<div class="panel">
+  <h2>③ 魔石清單</h2>
+
+  <div class="form-grid">
+    <div class="field">
+      <label>名稱（選填）</label>
+      <input type="text" id="f_name" placeholder="例如：紅色六邊形#1">
+    </div>
+    <div class="field">
+      <label>造型</label>
+      <select id="f_shape"></select>
+    </div>
+    <div class="field">
+      <label>顏色</label>
+      <select id="f_color"></select>
+    </div>
+  </div>
+
+  <div class="form-grid">
+    <div class="field">
+      <label>基礎屬性①</label>
+      <select id="f_attr1"></select>
+    </div>
+    <div class="field">
+      <label>類型①</label>
+      <select id="f_kind1">
+        <option value="flat">固定值</option>
+        <option value="percent">百分比(%)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>數值①</label>
+      <input type="number" id="f_val1" value="0" step="any">
+    </div>
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="f_has2">
+    <label for="f_has2" style="margin:0;">加入第二條基礎屬性</label>
+  </div>
+
+  <div class="form-grid" id="secondLineGrid">
+    <div class="field">
+      <label>基礎屬性②</label>
+      <select id="f_attr2"></select>
+    </div>
+    <div class="field">
+      <label>類型②</label>
+      <select id="f_kind2">
+        <option value="flat">固定值</option>
+        <option value="percent">百分比(%)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>數值②</label>
+      <input type="number" id="f_val2" value="0" step="any">
+    </div>
+  </div>
+
+  <div class="form-grid">
+    <div class="field" style="grid-column: span 2;">
+      <label>潛能屬性</label>
+      <select id="f_potType"></select>
+    </div>
+    <div class="field">
+      <label>潛能數值</label>
+      <input type="number" id="f_potVal" value="0" step="any">
+    </div>
+  </div>
+
+  <div class="row">
+    <button onclick="addStone()">＋ 新增魔石</button>
+    <button class="secondary" onclick="cancelEdit()" id="cancelBtn" style="display:none;">取消編輯</button>
+    <span style="flex:1;"></span>
+    <button class="secondary" onclick="exportJson()">匯出 JSON</button>
+    <button class="secondary" onclick="document.getElementById('importFile').click()">匯入 JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importJson(event)">
+    <button class="danger" onclick="clearAll()">清空全部</button>
+  </div>
+
+  <div style="margin-top:14px; overflow-x:auto;">
+    <table id="stoneTable">
+      <thead>
+        <tr><th>名稱</th><th>造型</th><th>顏色</th><th>基礎屬性</th><th>潛能</th><th>操作</th></tr>
+      </thead>
+      <tbody id="stoneTbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>④ 最佳化目標</h2>
+  <div class="row">
+    <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;">
+      <input type="radio" name="mode" value="single" checked onchange="renderTargetInputs()"> 單一屬性最大化
+    </label>
+    <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;">
+      <input type="radio" name="mode" value="weighted" onchange="renderTargetInputs()"> 自訂加權加總
+    </label>
+  </div>
+  <div id="targetInputs" style="margin-top:10px;"></div>
+</div>
+
+<div class="panel">
+  <h2>⑤ 計算結果</h2>
+  <div class="row">
+    <button onclick="runCalc()">🔍 計算最佳 5 顆組合</button>
+    <button class="secondary" onclick="copyAllExplains()">📋 複製全部結果文字（回饋用）</button>
+    <span id="comboCountInfo" class="hint"></span>
+  </div>
+  <div id="warnBox"></div>
+  <div id="results" style="margin-top:14px;"></div>
+</div>
+
+<div class="panel">
+  <h2>⚠️ 計算假設說明</h2>
+  <ul id="assumptions">
+    <li>造型 ↔ 基礎屬性、顏色 ↔ 數值高低沒有固定公式，每顆魔石的實際數值皆由你手動輸入。</li>
+    <li><b>造型 + 完整基礎屬性組合為一個 KEY，同組合中不可重複裝</b>：例如「圓形迅擊」只能存在一顆，但「圓形迅擊」與「圓形迅擊加成%」視為不同 KEY 可以共存；若魔石有兩條基礎屬性，需兩顆魔石的造型與兩條屬性（含固定值/百分比類型）完全相同才算撞 KEY，只要其中一條不同就可以共存。計算時會自動排除違反此規則的組合。</li>
+    <li>赤曜聚能／萬象塑形／同印契合的計數（紅色顆數／不同造型數／同造型顆數）皆<b>包含魔石自己本身</b>。</li>
+    <li>潛能共鳴：組合中若有多顆潛能共鳴魔石，只取<b>數值最高的一顆</b>生效，其餘不重複疊加。</li>
+    <li>同源潛能：組合中任兩顆（或多顆）潛能類型相同的魔石，會依「其餘同類型顆數」各自獲得加成；若組合中有多顆同源潛能魔石，同樣只取數值最高的一顆生效。潛能共鳴與同源潛能本身不參與同源判定，也不會被潛能共鳴/同源潛能加成。</li>
+    <li>套裝加成（造型組合觸發的額外效果）尚未計入本工具，依你的要求先略過。</li>
+    <li>最終數值公式：<code>總值 = (角色素質 + 固定基礎屬性加總 + 精通加總) × (1 + 百分比基礎屬性加總% + 增幅加總%)</code></li>
+  </ul>
+</div>
+
+<script>
+const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
+const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
+const COLORS = ['紫','金','紅'];
+const MASTERY_TYPES = ATTRS.map(a => a + '精通');
+const AMP_TYPES = ATTRS.map(a => a + '增幅');
+const SELF_MOD_TYPES = ['魔石淬鍊','赤曜聚能','萬象塑形','同印契合'];
+const GLOBAL_TYPES = ['潛能共鳴','同源潛能'];
+const POTENTIAL_TYPES = [...MASTERY_TYPES, ...AMP_TYPES, ...SELF_MOD_TYPES, ...GLOBAL_TYPES];
+const EXCLUDED_FROM_SAMESOURCE = new Set(GLOBAL_TYPES);
+
+let stones = [];
+let charBase = {};
+let editingId = null;
+let nextId = 1;
+let profiles = {};
+let currentProfile = '預設';
+
+function attrFromMastery(t){ return t.slice(0, t.length - '精通'.length); }
+function attrFromAmp(t){ return t.slice(0, t.length - '增幅'.length); }
+
+// ---------- persistence (多存檔) ----------
+function persistCurrent() {
+  profiles[currentProfile] = {stones, charBase, nextId};
+  localStorage.setItem('msc_profiles', JSON.stringify(profiles));
+  localStorage.setItem('msc_currentProfile', currentProfile);
+}
+function save() { persistCurrent(); }
+
+function applyProfile(name) {
+  const p = profiles[name] || {stones: [], charBase: {}, nextId: 1};
+  stones = p.stones || [];
+  charBase = p.charBase || {};
+  nextId = p.nextId || 1;
+  ATTRS.forEach(a => { if (charBase[a] === undefined) charBase[a] = 0; });
+  currentProfile = name;
+}
+
+function loadAll() {
+  try {
+    const raw = localStorage.getItem('msc_profiles');
+    if (raw) {
+      profiles = JSON.parse(raw);
+    } else {
+      // 舊版單存檔資料自動搬移
+      const oldStones = localStorage.getItem('msc_stones');
+      if (oldStones) {
+        profiles = {'預設': {
+          stones: JSON.parse(oldStones),
+          charBase: JSON.parse(localStorage.getItem('msc_charBase') || '{}'),
+          nextId: parseInt(localStorage.getItem('msc_nextId') || '1', 10)
+        }};
+      } else {
+        profiles = {'預設': {stones: [], charBase: {}, nextId: 1}};
+      }
+    }
+  } catch(e) {
+    profiles = {'預設': {stones: [], charBase: {}, nextId: 1}};
+  }
+  if (Object.keys(profiles).length === 0) profiles = {'預設': {stones: [], charBase: {}, nextId: 1}};
+  let name = localStorage.getItem('msc_currentProfile') || Object.keys(profiles)[0];
+  if (!profiles[name]) name = Object.keys(profiles)[0];
+  applyProfile(name);
+  persistCurrent();
+}
+
+function refreshProfileSelect() {
+  const sel = document.getElementById('profileSelect');
+  sel.innerHTML = Object.keys(profiles).map(n => `<option value="${n}" ${n===currentProfile?'selected':''}>${n}</option>`).join('');
+}
+function onProfileSelectChange() {
+  switchProfile(document.getElementById('profileSelect').value);
+}
+function refreshAllViews() {
+  renderCharBaseGrid();
+  renderStoneTable();
+  document.getElementById('results').innerHTML = '';
+  explainTexts = [];
+}
+function switchProfile(name) {
+  persistCurrent();
+  applyProfile(name);
+  persistCurrent();
+  refreshAllViews();
+}
+function newProfile() {
+  const name = (prompt('請輸入新存檔名稱（例如你的暱稱）：') || '').trim();
+  if (!name) return;
+  if (profiles[name]) { alert('這個名稱已經存在了'); return; }
+  persistCurrent();
+  profiles[name] = {stones: [], charBase: {}, nextId: 1};
+  applyProfile(name);
+  persistCurrent();
+  refreshProfileSelect();
+  refreshAllViews();
+}
+function renameProfile() {
+  const newName = (prompt('輸入新名稱：', currentProfile) || '').trim();
+  if (!newName || newName === currentProfile) return;
+  if (profiles[newName]) { alert('這個名稱已經存在了'); return; }
+  profiles[newName] = profiles[currentProfile];
+  delete profiles[currentProfile];
+  currentProfile = newName;
+  persistCurrent();
+  refreshProfileSelect();
+}
+function deleteProfile() {
+  const names = Object.keys(profiles);
+  if (names.length <= 1) { alert('至少要保留一個存檔'); return; }
+  if (!confirm(`確定要刪除存檔「${currentProfile}」嗎？此動作無法復原。`)) return;
+  delete profiles[currentProfile];
+  localStorage.setItem('msc_profiles', JSON.stringify(profiles));
+  applyProfile(Object.keys(profiles)[0]);
+  persistCurrent();
+  refreshProfileSelect();
+  refreshAllViews();
+}
+
+// ---------- init UI ----------
+function fillSelect(sel, options) {
+  sel.innerHTML = options.map(o => `<option value="${o}">${o}</option>`).join('');
+}
+function initSelectors() {
+  fillSelect(document.getElementById('f_shape'), SHAPES);
+  fillSelect(document.getElementById('f_color'), COLORS);
+  fillSelect(document.getElementById('f_attr1'), ATTRS);
+  fillSelect(document.getElementById('f_attr2'), ATTRS);
+
+  const potSel = document.getElementById('f_potType');
+  potSel.innerHTML =
+    `<optgroup label="精通（固定值加成）">${MASTERY_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</optgroup>` +
+    `<optgroup label="增幅（百分比加成）">${AMP_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</optgroup>` +
+    `<optgroup label="自身強化（依鑲嵌組合放大自己）">${SELF_MOD_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</optgroup>` +
+    `<optgroup label="全域機制">${GLOBAL_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</optgroup>`;
+}
+function renderCharBaseGrid() {
+  const grid = document.getElementById('charBaseGrid');
+  grid.innerHTML = ATTRS.map(a => `
+    <div class="field">
+      <label>${a}</label>
+      <input type="number" step="any" value="${charBase[a]||0}" onchange="charBase['${a}']=parseFloat(this.value)||0; save();">
+    </div>`).join('');
+}
+
+document.getElementById('f_has2').addEventListener('change', function(){
+  document.getElementById('secondLineGrid').style.display = this.checked ? 'grid' : 'none';
+});
+
+// ---------- stone CRUD ----------
+function addStone() {
+  const name = document.getElementById('f_name').value.trim();
+  const shape = document.getElementById('f_shape').value;
+  const color = document.getElementById('f_color').value;
+  const attr1 = document.getElementById('f_attr1').value;
+  const kind1 = document.getElementById('f_kind1').value;
+  const val1 = parseFloat(document.getElementById('f_val1').value) || 0;
+  const has2 = document.getElementById('f_has2').checked;
+  const attr2 = document.getElementById('f_attr2').value;
+  const kind2 = document.getElementById('f_kind2').value;
+  const val2 = parseFloat(document.getElementById('f_val2').value) || 0;
+  const potType = document.getElementById('f_potType').value;
+  const potVal = parseFloat(document.getElementById('f_potVal').value) || 0;
+
+  const baseLines = [{attr: attr1, kind: kind1, value: val1}];
+  if (has2) baseLines.push({attr: attr2, kind: kind2, value: val2});
+
+  const stone = {
+    id: editingId !== null ? editingId : nextId++,
+    name: name || `${color}${shape}`,
+    shape, color,
+    baseLines,
+    potential: {type: potType, value: potVal}
+  };
+
+  if (editingId !== null) {
+    const idx = stones.findIndex(s => s.id === editingId);
+    if (idx >= 0) stones[idx] = stone;
+    cancelEdit();
+  } else {
+    stones.push(stone);
+  }
+  save();
+  renderStoneTable();
+  clearForm();
+}
+
+function clearForm() {
+  document.getElementById('f_name').value = '';
+  document.getElementById('f_val1').value = 0;
+  document.getElementById('f_val2').value = 0;
+  document.getElementById('f_potVal').value = 0;
+  document.getElementById('f_has2').checked = false;
+  document.getElementById('secondLineGrid').style.display = 'none';
+}
+
+function editStone(id) {
+  const s = stones.find(x => x.id === id);
+  if (!s) return;
+  editingId = id;
+  document.getElementById('f_name').value = s.name;
+  document.getElementById('f_shape').value = s.shape;
+  document.getElementById('f_color').value = s.color;
+  document.getElementById('f_attr1').value = s.baseLines[0].attr;
+  document.getElementById('f_kind1').value = s.baseLines[0].kind;
+  document.getElementById('f_val1').value = s.baseLines[0].value;
+  const has2 = s.baseLines.length > 1;
+  document.getElementById('f_has2').checked = has2;
+  document.getElementById('secondLineGrid').style.display = has2 ? 'grid' : 'none';
+  if (has2) {
+    document.getElementById('f_attr2').value = s.baseLines[1].attr;
+    document.getElementById('f_kind2').value = s.baseLines[1].kind;
+    document.getElementById('f_val2').value = s.baseLines[1].value;
+  }
+  document.getElementById('f_potType').value = s.potential.type;
+  document.getElementById('f_potVal').value = s.potential.value;
+  document.getElementById('cancelBtn').style.display = 'inline-block';
+  window.scrollTo({top: 200, behavior:'smooth'});
+}
+function cancelEdit() {
+  editingId = null;
+  document.getElementById('cancelBtn').style.display = 'none';
+  clearForm();
+}
+function deleteStone(id) {
+  stones = stones.filter(s => s.id !== id);
+  save();
+  renderStoneTable();
+}
+function clearAll() {
+  if (!confirm('確定要清空所有魔石資料嗎？此動作無法復原。')) return;
+  stones = [];
+  save();
+  renderStoneTable();
+}
+
+function renderStoneTable() {
+  const tbody = document.getElementById('stoneTbody');
+  tbody.innerHTML = stones.map(s => {
+    const baseTxt = s.baseLines.map(bl => `${bl.attr} ${bl.kind==='flat'?'+':'+'}${bl.value}${bl.kind==='percent'?'%':''}`).join('｜');
+    return `<tr>
+      <td>${s.name}</td>
+      <td><span class="tag tag-${s.shape}">${s.shape}</span></td>
+      <td><span class="tag tag-${s.color}">${s.color}</span></td>
+      <td>${baseTxt}</td>
+      <td>${s.potential.type} (${s.potential.value})</td>
+      <td class="actions">
+        <button class="secondary small" onclick="editStone(${s.id})">編輯</button>
+        <button class="danger small" onclick="deleteStone(${s.id})">刪除</button>
+      </td>
+    </tr>`;
+  }).join('');
+  updateComboCountInfo();
+}
+
+// ---------- import/export ----------
+function exportJson() {
+  const data = {stones, charBase};
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'magic-stones.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+function importJson(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (Array.isArray(data.stones)) {
+        stones = data.stones;
+        nextId = Math.max(1, ...stones.map(s => s.id + 1));
+      }
+      if (data.charBase) charBase = data.charBase;
+      save();
+      renderCharBaseGrid();
+      renderStoneTable();
+      alert('匯入完成');
+    } catch(err) {
+      alert('匯入失敗：檔案格式錯誤');
+    }
+  };
+  reader.readAsText(file);
+  evt.target.value = '';
+}
+
+// ---------- target / weights ----------
+function renderTargetInputs() {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const container = document.getElementById('targetInputs');
+  if (mode === 'single') {
+    container.innerHTML = `<div class="field" style="max-width:200px;">
+      <label>目標屬性</label>
+      <select id="targetAttr">${ATTRS.map(a=>`<option value="${a}">${a}</option>`).join('')}</select>
+    </div>`;
+  } else {
+    container.innerHTML = `<div class="grid6">${ATTRS.map(a => `
+      <div class="field">
+        <label>${a} 權重</label>
+        <input type="number" step="any" id="weight_${a}" value="1">
+      </div>`).join('')}</div>
+      <div class="hint">最終分數 = Σ(各屬性最終值 × 對應權重)</div>`;
+  }
+}
+
+// ---------- validity (造型+完整基礎屬性組合 為一個 KEY，不可重複裝) ----------
+// KEY 是「造型 + 這顆魔石全部基礎屬性線(屬性+固定值/百分比)的組合」。
+// 只有兩顆魔石的造型與完整基礎屬性組合都一致時才算同 KEY 衝突；
+// 只要有任一條屬性不同（例如換成不同屬性、或固定值/百分比類型不同），就視為不同 KEY，可以共存。
+function stoneTypeKey(s) {
+  const parts = s.baseLines.map(bl => `${bl.attr}:${bl.kind}`).sort();
+  return s.shape + '|' + parts.join(',');
+}
+function comboIsValid(combo) {
+  const seen = new Set();
+  for (const s of combo) {
+    const key = stoneTypeKey(s);
+    if (seen.has(key)) return false;
+    seen.add(key);
+  }
+  return true;
+}
+
+// ---------- calc engine ----------
+// log 為選填參數：只有窮舉找最佳解時才會傳 log（節省效能），
+// 需要文字明細時（explainCombo）才會傳入陣列收集逐行說明。
+function computeCombo(combo, log) {
+  const redCount = combo.filter(s => s.color === '紅').length;
+  const distinctShapes = new Set(combo.map(s => s.shape)).size;
+  const shapeCounts = {};
+  combo.forEach(s => shapeCounts[s.shape] = (shapeCounts[s.shape]||0) + 1);
+
+  if (log) {
+    log.push('=== 組合明細 ===');
+    combo.forEach((s,i) => {
+      const baseTxt = s.baseLines.map(bl=>`${bl.attr}${bl.kind==='percent'?'加成':''} +${bl.value}${bl.kind==='percent'?'%':''}`).join('、');
+      log.push(`[${i+1}] ${s.name} | 造型:${s.shape} 顏色:${s.color} | 基礎屬性: ${baseTxt} | 潛能: ${s.potential.type}(${s.potential.value})`);
+    });
+    log.push('');
+    log.push('=== 組合統計 ===');
+    log.push(`紅色魔石數(含自己): ${redCount}`);
+    log.push(`不同造型數(含自己): ${distinctShapes}`);
+    log.push(`各造型顆數: ${Object.entries(shapeCounts).map(([k,v])=>`${k}x${v}`).join(', ')}`);
+  }
+
+  const resonanceV = combo
+    .filter(s => s.potential.type === '潛能共鳴')
+    .reduce((m, s) => Math.max(m, s.potential.value), 0);
+  const sameSourceV = combo
+    .filter(s => s.potential.type === '同源潛能')
+    .reduce((m, s) => Math.max(m, s.potential.value), 0);
+
+  if (log) {
+    log.push(`潛能共鳴生效值(多顆取最高一顆): ${resonanceV}%`);
+    log.push(`同源潛能生效值(多顆取最高一顆): ${sameSourceV}%`);
+    log.push('');
+  }
+
+  const typeCounts = {};
+  combo.forEach(s => {
+    if (!EXCLUDED_FROM_SAMESOURCE.has(s.potential.type)) {
+      typeCounts[s.potential.type] = (typeCounts[s.potential.type]||0) + 1;
+    }
+  });
+
+  const boosted = combo.map(s => {
+    const T = s.potential.type;
+    if (EXCLUDED_FROM_SAMESOURCE.has(T)) return s.potential.value;
+    const otherSame = (typeCounts[T]||1) - 1;
+    const mult = 1 + resonanceV/100 + (sameSourceV * otherSame)/100;
+    return s.potential.value * mult;
+  });
+
+  if (log) {
+    log.push('=== 潛能效果值套用共鳴/同源後 ===');
+    combo.forEach((s,i) => {
+      const T = s.potential.type;
+      if (EXCLUDED_FROM_SAMESOURCE.has(T)) {
+        log.push(`[${i+1}] ${s.name}: ${T} 原值${s.potential.value}（全域機制，不受共鳴/同源影響）`);
+      } else {
+        const otherSame = (typeCounts[T]||1) - 1;
+        log.push(`[${i+1}] ${s.name}: ${T} 原值${s.potential.value} → ×(1+共鳴${resonanceV}%+同源${sameSourceV}%×同型${otherSame}顆) = ${boosted[i].toFixed(2)}`);
+      }
+    });
+    log.push('');
+    log.push('=== 角色基本素質 ===');
+    log.push(ATTRS.map(a=>`${a}=${charBase[a]||0}`).join(', '));
+    log.push('');
+    log.push('=== 基礎屬性套用自身強化後 ===');
+  }
+
+  const flatPool = {}, percentPool = {};
+  ATTRS.forEach(a => { flatPool[a] = charBase[a] || 0; percentPool[a] = 0; });
+
+  combo.forEach((s, idx) => {
+    const T = s.potential.type;
+    let factor = 1, note = '無自身強化(維持原值)';
+    if (T === '魔石淬鍊') { factor = 1 + boosted[idx]/100; note = `魔石淬鍊 ×(1+${boosted[idx].toFixed(2)}%)`; }
+    else if (T === '赤曜聚能') { factor = 1 + (boosted[idx] * redCount)/100; note = `赤曜聚能 ×(1+${boosted[idx].toFixed(2)}%×紅${redCount}顆)`; }
+    else if (T === '萬象塑形') { factor = 1 + (boosted[idx] * distinctShapes)/100; note = `萬象塑形 ×(1+${boosted[idx].toFixed(2)}%×${distinctShapes}種造型)`; }
+    else if (T === '同印契合') { factor = 1 + (boosted[idx] * shapeCounts[s.shape])/100; note = `同印契合 ×(1+${boosted[idx].toFixed(2)}%×同型${shapeCounts[s.shape]}顆)`; }
+
+    s.baseLines.forEach(bl => {
+      const val = bl.value * factor;
+      if (log) log.push(`[${idx+1}] ${s.name} ${bl.attr}${bl.kind==='percent'?'加成':''} 原值${bl.value}${bl.kind==='percent'?'%':''} × 係數${factor.toFixed(3)} [${note}] = ${val.toFixed(2)}${bl.kind==='percent'?'%':''}`);
+      if (bl.kind === 'flat') flatPool[bl.attr] += val;
+      else percentPool[bl.attr] += val;
+    });
+
+    if (MASTERY_TYPES.includes(T)) {
+      flatPool[attrFromMastery(T)] += boosted[idx];
+      if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${attrFromMastery(T)} 固定值 +${boosted[idx].toFixed(2)}`);
+    } else if (AMP_TYPES.includes(T)) {
+      percentPool[attrFromAmp(T)] += boosted[idx];
+      if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${attrFromAmp(T)} 百分比 +${boosted[idx].toFixed(2)}%`);
+    }
+  });
+
+  const finalTotals = {};
+  if (log) { log.push(''); log.push('=== 最終加總 ==='); }
+  ATTRS.forEach(a => {
+    finalTotals[a] = flatPool[a] * (1 + percentPool[a]/100);
+    if (log) log.push(`${a}: 固定值合計=${flatPool[a].toFixed(2)}, 百分比合計=${percentPool[a].toFixed(2)}%, 最終值=${finalTotals[a].toFixed(2)}`);
+  });
+  return {flatPool, percentPool, finalTotals};
+}
+
+function explainCombo(combo) {
+  const log = [];
+  computeCombo(combo, log);
+  return log.join('\n');
+}
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function scoreOf(finalTotals, mode) {
+  if (mode === 'single') {
+    const attr = document.getElementById('targetAttr').value;
+    return finalTotals[attr];
+  } else {
+    let s = 0;
+    ATTRS.forEach(a => {
+      const w = parseFloat(document.getElementById(`weight_${a}`).value) || 0;
+      s += finalTotals[a] * w;
+    });
+    return s;
+  }
+}
+
+function combCount(n, k) {
+  if (k > n) return 0;
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return Math.round(r);
+}
+function updateComboCountInfo() {
+  const n = stones.length;
+  const c = combCount(n, 5);
+  document.getElementById('comboCountInfo').textContent =
+    n < 5 ? `目前僅 ${n} 顆魔石，至少需要 5 顆才能計算` : `共 ${n} 顆魔石，將窮舉 ${c.toLocaleString()} 種組合`;
+}
+
+function runCalc() {
+  const warnBox = document.getElementById('warnBox');
+  warnBox.style.display = 'none';
+  const n = stones.length;
+  if (n < 5) {
+    alert('魔石數量不足 5 顆，請先新增更多魔石。');
+    return;
+  }
+  const total = combCount(n, 5);
+  if (total > 3000000) {
+    warnBox.style.display = 'block';
+    warnBox.textContent = `⚠️ 組合數高達 ${total.toLocaleString()}，計算可能需要較長時間，請耐心等候...`;
+  }
+
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  const TOP_K = 10;
+  const top = []; // {score, combo, finalTotals}
+
+  function tryInsert(entry) {
+    if (top.length < TOP_K) {
+      top.push(entry);
+      top.sort((a,b) => b.score - a.score);
+    } else if (entry.score > top[top.length-1].score) {
+      top[top.length-1] = entry;
+      top.sort((a,b) => b.score - a.score);
+    }
+  }
+
+  let validCount = 0;
+  const idxCombo = new Array(5);
+  function recurse(start, depth) {
+    if (depth === 5) {
+      const combo = idxCombo.map(i => stones[i]);
+      if (!comboIsValid(combo)) return;
+      validCount++;
+      const {finalTotals} = computeCombo(combo);
+      const score = scoreOf(finalTotals, mode);
+      tryInsert({score, combo, finalTotals});
+      return;
+    }
+    for (let i = start; i <= n - (5 - depth); i++) {
+      idxCombo[depth] = i;
+      recurse(i + 1, depth + 1);
+    }
+  }
+  recurse(0, 0);
+
+  if (validCount === 0) {
+    warnBox.style.display = 'block';
+    warnBox.textContent = '⚠️ 沒有任何合法組合：清單中可能太多魔石擁有完全相同的「造型+基礎屬性組合」KEY，導致無法湊出 5 顆互不衝突的組合。';
+  } else {
+    warnBox.style.display = 'none';
+  }
+
+  renderResults(top);
+}
+
+let explainTexts = [];
+function renderResults(top) {
+  const container = document.getElementById('results');
+  explainTexts = top.map(r => explainCombo(r.combo));
+  if (top.length === 0) { container.innerHTML = '<div class="hint">無結果</div>'; return; }
+  container.innerHTML = top.map((r, i) => `
+    <div class="result-card ${i===0?'top1':''}">
+      <div class="result-header">
+        <div>${i===0?'🏆 ':''}第 ${i+1} 名</div>
+        <div class="score">${r.score.toFixed(2)}</div>
+      </div>
+      <div>${r.combo.map(s => `<span class="stone-chip"><span class="tag tag-${s.color}">${s.color}</span> <span class="tag tag-${s.shape}">${s.shape}</span> ${s.name}</span>`).join('')}</div>
+      <div class="attr-table">
+        ${ATTRS.map(a => `<div class="attr-cell"><div class="name">${a}</div><div class="val">${r.finalTotals[a].toFixed(1)}</div></div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="secondary small" onclick="toggleExplain(${i})">顯示/隱藏計算明細</button>
+        <button class="secondary small" onclick="copyExplain(${i})">複製此組文字</button>
+      </div>
+      <pre id="explain-${i}" style="display:none; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; margin-top:8px; font-size:11px; white-space:pre-wrap; max-height:400px; overflow:auto;">${escapeHtml(explainTexts[i])}</pre>
+    </div>
+  `).join('');
+}
+function toggleExplain(i) {
+  const el = document.getElementById(`explain-${i}`);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+function copyToClipboard(text) {
+  return navigator.clipboard.writeText(text)
+    .then(() => alert('已複製到剪貼簿，可直接貼給我'))
+    .catch(() => alert('複製失敗，請手動選取文字複製'));
+}
+function copyExplain(i) { copyToClipboard(explainTexts[i]); }
+function copyAllExplains() {
+  if (explainTexts.length === 0) { alert('請先計算組合'); return; }
+  const text = explainTexts.map((t,i)=>`########## 第 ${i+1} 名 ##########\n${t}`).join('\n\n');
+  copyToClipboard(text);
+}
+
+// ---------- boot ----------
+loadAll();
+initSelectors();
+refreshProfileSelect();
+renderCharBaseGrid();
+renderStoneTable();
+renderTargetInputs();
+</script>
+</body>
+</html>
