@@ -65,6 +65,7 @@
     font-weight: 600;
   }
   button:hover { opacity: 0.9; }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
   button.secondary { background: var(--panel2); border: 1px solid var(--border); }
   button.danger { background: var(--accent2); }
   .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
@@ -243,9 +244,18 @@
 <div class="panel">
   <h2>⑤ 計算結果</h2>
   <div class="row">
-    <button onclick="runCalc()">🔍 計算最佳 5 顆組合</button>
+    <button id="calcBtn" onclick="runCalc()">🔍 計算最佳 5 顆組合</button>
     <button class="secondary" onclick="copyAllExplains()">📋 複製全部結果文字（回饋用）</button>
     <span id="comboCountInfo" class="hint"></span>
+  </div>
+  <div id="progressWrap" style="display:none; margin-top:10px;">
+    <div style="background:var(--panel2); border-radius:6px; overflow:hidden; height:18px; border:1px solid var(--border);">
+      <div id="progressBar" style="background:var(--accent); height:100%; width:0%; transition:width 0.08s linear;"></div>
+    </div>
+    <div class="row" style="margin-top:6px; align-items:center;">
+      <span id="progressText" class="hint"></span>
+      <button class="danger small" onclick="cancelCalc()">取消計算</button>
+    </div>
   </div>
   <div id="warnBox"></div>
   <div id="results" style="margin-top:14px;"></div>
@@ -316,9 +326,6 @@ let editingId = null;
 let nextId = 1;
 let profiles = {};
 let currentProfile = '預設';
-
-function attrFromMastery(t){ return t.slice(0, t.length - '精通'.length); }
-function attrFromAmp(t){ return t.slice(0, t.length - '增幅'.length); }
 
 // ---------- persistence (多存檔) ----------
 function persistCurrent() {
@@ -660,11 +667,22 @@ function comboIsValid(combo) {
 // ---------- calc engine ----------
 // log 為選填參數：只有窮舉找最佳解時才會傳 log（節省效能），
 // 需要文字明細時（explainCombo）才會傳入陣列收集逐行說明。
+// 用查表(O(1))取代 MASTERY_TYPES.includes()/AMP_TYPES.includes() 的線性掃描，
+// 因為這個函式是窮舉時的最熱路徑，會被呼叫非常多次。
+const MASTERY_ATTR_MAP = {};
+const AMP_ATTR_MAP = {};
+ATTRS.forEach(a => { MASTERY_ATTR_MAP[a + '精通'] = a; AMP_ATTR_MAP[a + '增幅'] = a; });
+
 function computeCombo(combo, log) {
-  const redCount = combo.filter(s => s.color === '紅').length;
-  const distinctShapes = new Set(combo.map(s => s.shape)).size;
+  const n = combo.length;
+  let redCount = 0;
   const shapeCounts = {};
-  combo.forEach(s => shapeCounts[s.shape] = (shapeCounts[s.shape]||0) + 1);
+  for (let i = 0; i < n; i++) {
+    const s = combo[i];
+    if (s.color === '紅') redCount++;
+    shapeCounts[s.shape] = (shapeCounts[s.shape] || 0) + 1;
+  }
+  const distinctShapes = Object.keys(shapeCounts).length;
 
   if (log) {
     log.push('=== 組合明細 ===');
@@ -679,12 +697,12 @@ function computeCombo(combo, log) {
     log.push(`各造型顆數: ${Object.entries(shapeCounts).map(([k,v])=>`${k}x${v}`).join(', ')}`);
   }
 
-  const resonanceV = combo
-    .filter(s => s.potential.type === '潛能共鳴')
-    .reduce((m, s) => Math.max(m, s.potential.value), 0);
-  const sameSourceV = combo
-    .filter(s => s.potential.type === '同源潛能')
-    .reduce((m, s) => Math.max(m, s.potential.value), 0);
+  let resonanceV = 0, sameSourceV = 0;
+  for (let i = 0; i < n; i++) {
+    const p = combo[i].potential;
+    if (p.type === '潛能共鳴') { if (p.value > resonanceV) resonanceV = p.value; }
+    else if (p.type === '同源潛能') { if (p.value > sameSourceV) sameSourceV = p.value; }
+  }
 
   if (log) {
     log.push(`潛能共鳴生效值(多顆取最高一顆): ${resonanceV}%`);
@@ -693,19 +711,19 @@ function computeCombo(combo, log) {
   }
 
   const typeCounts = {};
-  combo.forEach(s => {
-    if (!EXCLUDED_FROM_SAMESOURCE.has(s.potential.type)) {
-      typeCounts[s.potential.type] = (typeCounts[s.potential.type]||0) + 1;
-    }
-  });
+  for (let i = 0; i < n; i++) {
+    const T = combo[i].potential.type;
+    if (!EXCLUDED_FROM_SAMESOURCE.has(T)) typeCounts[T] = (typeCounts[T] || 0) + 1;
+  }
 
-  const boosted = combo.map(s => {
+  const boosted = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const s = combo[i];
     const T = s.potential.type;
-    if (EXCLUDED_FROM_SAMESOURCE.has(T)) return s.potential.value;
-    const otherSame = (typeCounts[T]||1) - 1;
-    const mult = 1 + resonanceV/100 + (sameSourceV * otherSame)/100;
-    return s.potential.value * mult;
-  });
+    if (EXCLUDED_FROM_SAMESOURCE.has(T)) { boosted[i] = s.potential.value; continue; }
+    const otherSame = (typeCounts[T] || 1) - 1;
+    boosted[i] = s.potential.value * (1 + resonanceV/100 + (sameSourceV * otherSame)/100);
+  }
 
   if (log) {
     log.push('=== 潛能效果值套用共鳴/同源後 ===');
@@ -726,38 +744,47 @@ function computeCombo(combo, log) {
   }
 
   const flatPool = {}, percentPool = {};
-  ATTRS.forEach(a => { flatPool[a] = charBase[a] || 0; percentPool[a] = 0; });
+  for (let i = 0; i < ATTRS.length; i++) { const a = ATTRS[i]; flatPool[a] = charBase[a] || 0; percentPool[a] = 0; }
 
-  combo.forEach((s, idx) => {
+  for (let idx = 0; idx < n; idx++) {
+    const s = combo[idx];
     const T = s.potential.type;
-    let factor = 1, note = '無自身強化(維持原值)';
-    if (T === '魔石淬鍊') { factor = 1 + boosted[idx]/100; note = `魔石淬鍊 ×(1+${boosted[idx].toFixed(2)}%)`; }
-    else if (T === '赤曜聚能') { factor = 1 + (boosted[idx] * redCount)/100; note = `赤曜聚能 ×(1+${boosted[idx].toFixed(2)}%×紅${redCount}顆)`; }
-    else if (T === '萬象塑形') { factor = 1 + (boosted[idx] * distinctShapes)/100; note = `萬象塑形 ×(1+${boosted[idx].toFixed(2)}%×${distinctShapes}種造型)`; }
-    else if (T === '同印契合') { factor = 1 + (boosted[idx] * shapeCounts[s.shape])/100; note = `同印契合 ×(1+${boosted[idx].toFixed(2)}%×同型${shapeCounts[s.shape]}顆)`; }
+    let factor = 1, note;
+    if (T === '魔石淬鍊') { factor = 1 + boosted[idx]/100; if (log) note = `魔石淬鍊 ×(1+${boosted[idx].toFixed(2)}%)`; }
+    else if (T === '赤曜聚能') { factor = 1 + (boosted[idx] * redCount)/100; if (log) note = `赤曜聚能 ×(1+${boosted[idx].toFixed(2)}%×紅${redCount}顆)`; }
+    else if (T === '萬象塑形') { factor = 1 + (boosted[idx] * distinctShapes)/100; if (log) note = `萬象塑形 ×(1+${boosted[idx].toFixed(2)}%×${distinctShapes}種造型)`; }
+    else if (T === '同印契合') { factor = 1 + (boosted[idx] * shapeCounts[s.shape])/100; if (log) note = `同印契合 ×(1+${boosted[idx].toFixed(2)}%×同型${shapeCounts[s.shape]}顆)`; }
+    else if (log) note = '無自身強化(維持原值)';
 
-    s.baseLines.forEach(bl => {
+    const lines = s.baseLines;
+    for (let j = 0; j < lines.length; j++) {
+      const bl = lines[j];
       const val = bl.value * factor;
       if (log) log.push(`[${idx+1}] ${s.name} ${bl.attr}${bl.kind==='percent'?'加成':''} 原值${bl.value}${bl.kind==='percent'?'%':''} × 係數${factor.toFixed(3)} [${note}] = ${val.toFixed(2)}${bl.kind==='percent'?'%':''}`);
       if (bl.kind === 'flat') flatPool[bl.attr] += val;
       else percentPool[bl.attr] += val;
-    });
-
-    if (MASTERY_TYPES.includes(T)) {
-      flatPool[attrFromMastery(T)] += boosted[idx];
-      if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${attrFromMastery(T)} 固定值 +${boosted[idx].toFixed(2)}`);
-    } else if (AMP_TYPES.includes(T)) {
-      percentPool[attrFromAmp(T)] += boosted[idx];
-      if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${attrFromAmp(T)} 百分比 +${boosted[idx].toFixed(2)}%`);
     }
-  });
+
+    const masteryAttr = MASTERY_ATTR_MAP[T];
+    if (masteryAttr) {
+      flatPool[masteryAttr] += boosted[idx];
+      if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${masteryAttr} 固定值 +${boosted[idx].toFixed(2)}`);
+    } else {
+      const ampAttr = AMP_ATTR_MAP[T];
+      if (ampAttr) {
+        percentPool[ampAttr] += boosted[idx];
+        if (log) log.push(`[${idx+1}] ${s.name} 潛能${T} → ${ampAttr} 百分比 +${boosted[idx].toFixed(2)}%`);
+      }
+    }
+  }
 
   const finalTotals = {};
   if (log) { log.push(''); log.push('=== 最終加總 ==='); }
-  ATTRS.forEach(a => {
+  for (let i = 0; i < ATTRS.length; i++) {
+    const a = ATTRS[i];
     finalTotals[a] = flatPool[a] * (1 + percentPool[a]/100);
     if (log) log.push(`${a}: 固定值合計=${flatPool[a].toFixed(2)}, 百分比合計=${percentPool[a].toFixed(2)}%, 最終值=${finalTotals[a].toFixed(2)}`);
-  });
+  }
   return {flatPool, percentPool, finalTotals};
 }
 
@@ -784,20 +811,55 @@ function scoreOf(finalTotals, mode) {
   }
 }
 
-function combCount(n, k) {
-  if (k > n) return 0;
-  let r = 1;
-  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
-  return Math.round(r);
+// 把魔石依「造型+完整基礎屬性組合」KEY 分組——同一組內的魔石互相衝突，
+// 每組最多只能選 1 顆代表。這樣可以直接窮舉「5 個不同組各選 1 顆代表」，
+// 而不必先產生 C(n,5) 種組合再逐一濾掉不合法的，數量級可以差非常多。
+function buildGroups() {
+  const map = new Map();
+  stones.forEach(s => {
+    const key = stoneTypeKey(s);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(s);
+  });
+  return Array.from(map.values());
+}
+// 用生成函數 DP 算出「5 個不同組各選 1 顆代表」總共有幾種合法組合。
+function validComboTotal(groups, k) {
+  const dp = new Array(k + 1).fill(0);
+  dp[0] = 1;
+  for (const g of groups) {
+    const s = g.length;
+    for (let j = k; j >= 1; j--) dp[j] += dp[j - 1] * s;
+  }
+  return dp[k];
 }
 function updateComboCountInfo() {
   const n = stones.length;
-  const c = combCount(n, 5);
-  document.getElementById('comboCountInfo').textContent =
-    n < 5 ? `目前僅 ${n} 顆魔石，至少需要 5 顆才能計算` : `共 ${n} 顆魔石，將窮舉 ${c.toLocaleString()} 種組合`;
+  const info = document.getElementById('comboCountInfo');
+  if (n < 5) { info.textContent = `目前僅 ${n} 顆魔石，至少需要 5 顆才能計算`; return; }
+  const groups = buildGroups();
+  const total = validComboTotal(groups, 5);
+  info.textContent = `共 ${n} 顆魔石（${groups.length} 種不重複造型屬性組合），將計算 ${total.toLocaleString()} 種合法組合`;
+}
+
+function nextCombination(idx, n, k) {
+  let i = k - 1;
+  while (i >= 0 && idx[i] === n - k + i) i--;
+  if (i < 0) return false;
+  idx[i]++;
+  for (let j = i + 1; j < k; j++) idx[j] = idx[j-1] + 1;
+  return true;
+}
+
+let isCalculating = false;
+let calcCancelled = false;
+
+function cancelCalc() {
+  calcCancelled = true;
 }
 
 function runCalc() {
+  if (isCalculating) return;
   const warnBox = document.getElementById('warnBox');
   warnBox.style.display = 'none';
   const n = stones.length;
@@ -805,12 +867,10 @@ function runCalc() {
     alert('魔石數量不足 5 顆，請先新增更多魔石。');
     return;
   }
-  const total = combCount(n, 5);
-  if (total > 3000000) {
-    warnBox.style.display = 'block';
-    warnBox.textContent = `⚠️ 組合數高達 ${total.toLocaleString()}，計算可能需要較長時間，請耐心等候...`;
-  }
 
+  const groups = buildGroups();
+  const numGroups = groups.length;
+  const total = validComboTotal(groups, 5);
   const mode = document.querySelector('input[name=mode]:checked').value;
   const TOP_K = 10;
   const top = []; // {score, combo, finalTotals}
@@ -825,33 +885,80 @@ function runCalc() {
     }
   }
 
-  let validCount = 0;
-  const idxCombo = new Array(5);
-  function recurse(start, depth) {
-    if (depth === 5) {
-      const combo = idxCombo.map(i => stones[i]);
-      if (!comboIsValid(combo)) return;
-      validCount++;
+  isCalculating = true;
+  calcCancelled = false;
+  document.getElementById('calcBtn').disabled = true;
+  document.getElementById('results').innerHTML = '';
+  const progressWrap = document.getElementById('progressWrap');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  progressWrap.style.display = 'block';
+  progressBar.style.width = '0%';
+  progressText.textContent = `計算中... 0 / ${total.toLocaleString()} (0%)`;
+
+  let processed = 0;
+  const startTime = performance.now();
+
+  function finish(cancelled) {
+    isCalculating = false;
+    document.getElementById('calcBtn').disabled = false;
+    progressWrap.style.display = 'none';
+
+    if (cancelled) {
+      warnBox.style.display = 'block';
+      warnBox.textContent = `⚠️ 計算已取消（已處理 ${processed.toLocaleString()} / ${total.toLocaleString()} 種組合，以下為目前找到的暫時結果）。`;
+    } else if (total === 0) {
+      warnBox.style.display = 'block';
+      warnBox.textContent = `⚠️ 沒有任何合法組合：清單中只有 ${numGroups} 種不重複的「造型+基礎屬性組合」KEY，不足 5 種，無法湊出 5 顆互不衝突的組合。`;
+    } else {
+      warnBox.style.display = 'none';
+    }
+    renderResults(top);
+  }
+
+  if (numGroups < 5) { finish(false); return; }
+
+  // groupIdx：從 numGroups 個 KEY 分組中選出 5 組（互不相同）。
+  // repIdx：在這 5 組各自內部，目前選中的代表魔石索引（像里程表一樣逐一跑遍該組內所有候選）。
+  const groupIdx = [0, 1, 2, 3, 4];
+  let repIdx = [0, 0, 0, 0, 0];
+
+  function currentCombo() {
+    return [
+      groups[groupIdx[0]][repIdx[0]],
+      groups[groupIdx[1]][repIdx[1]],
+      groups[groupIdx[2]][repIdx[2]],
+      groups[groupIdx[3]][repIdx[3]],
+    groups[groupIdx[4]][repIdx[4]],
+    ];
+  }
+  function advance() {
+    for (let slot = 4; slot >= 0; slot--) {
+      repIdx[slot]++;
+      if (repIdx[slot] < groups[groupIdx[slot]].length) return true;
+      repIdx[slot] = 0;
+    }
+    return nextCombination(groupIdx, numGroups, 5);
+  }
+
+  function processChunk() {
+    if (calcCancelled) { finish(true); return; }
+    const chunkStart = performance.now();
+    while (performance.now() - chunkStart < 40) {
+      const combo = currentCombo();
       const {finalTotals} = computeCombo(combo);
       const score = scoreOf(finalTotals, mode);
       tryInsert({score, combo, finalTotals});
-      return;
+      processed++;
+      if (!advance()) { finish(false); return; }
     }
-    for (let i = start; i <= n - (5 - depth); i++) {
-      idxCombo[depth] = i;
-      recurse(i + 1, depth + 1);
-    }
+    const pct = total > 0 ? ((processed / total) * 100).toFixed(1) : '100.0';
+    progressBar.style.width = pct + '%';
+    const elapsedSec = ((performance.now() - startTime) / 1000).toFixed(1);
+    progressText.textContent = `計算中... ${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%，已耗時 ${elapsedSec}s）`;
+    setTimeout(processChunk, 0);
   }
-  recurse(0, 0);
-
-  if (validCount === 0) {
-    warnBox.style.display = 'block';
-    warnBox.textContent = '⚠️ 沒有任何合法組合：清單中可能太多魔石擁有完全相同的「造型+基礎屬性組合」KEY，導致無法湊出 5 顆互不衝突的組合。';
-  } else {
-    warnBox.style.display = 'none';
-  }
-
-  renderResults(top);
+  setTimeout(processChunk, 0);
 }
 
 let explainTexts = [];
