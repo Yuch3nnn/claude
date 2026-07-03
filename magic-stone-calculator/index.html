@@ -576,16 +576,17 @@ function clearAll() {
 function renderStoneTable() {
   const tbody = document.getElementById('stoneTbody');
   tbody.innerHTML = stones.map(s => {
-    const baseTxt = s.baseLines.map(bl => `${bl.attr} ${bl.kind==='flat'?'+':'+'}${bl.value}${bl.kind==='percent'?'%':''}`).join('｜');
+    const baseTxt = s.baseLines.map(bl => `${escapeHtml(bl.attr)} ${bl.kind==='flat'?'+':'+'}${escapeHtml(bl.value)}${bl.kind==='percent'?'%':''}`).join('｜');
+    const safeId = Number(s.id) || 0;
     return `<tr>
-      <td>${s.name}</td>
-      <td><span class="tag tag-${s.shape}">${s.shape}</span></td>
-      <td><span class="tag tag-${s.color}">${s.color}</span></td>
+      <td>${escapeHtml(s.name)}</td>
+      <td><span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span></td>
+      <td><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span></td>
       <td>${baseTxt}</td>
-      <td>${s.potential.type} (${s.potential.value})</td>
+      <td>${escapeHtml(s.potential.type)} (${escapeHtml(s.potential.value)})</td>
       <td class="actions">
-        <button class="secondary small" onclick="editStone(${s.id})">編輯</button>
-        <button class="danger small" onclick="deleteStone(${s.id})">刪除</button>
+        <button class="secondary small" onclick="editStone(${safeId})">編輯</button>
+        <button class="danger small" onclick="deleteStone(${safeId})">刪除</button>
       </td>
     </tr>`;
   }).join('');
@@ -602,6 +603,31 @@ function exportJson() {
   a.click();
   URL.revokeObjectURL(url);
 }
+// 匯入的 JSON 可能來自別人分享的檔案，是不受信任的外部輸入，
+// 所以在這個邊界把每一筆資料的欄位都驗證/轉型成預期的型別，
+// 格式不對的直接丟棄，不讓它進到後續計算或畫面渲染。
+function sanitizeStone(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  if (!SHAPES.includes(raw.shape)) return null;
+  if (!COLORS.includes(raw.color)) return null;
+  if (!Array.isArray(raw.baseLines) || raw.baseLines.length < 1 || raw.baseLines.length > 2) return null;
+
+  const baseLines = [];
+  for (const bl of raw.baseLines) {
+    if (!bl || !ATTRS.includes(bl.attr) || (bl.kind !== 'flat' && bl.kind !== 'percent')) return null;
+    const value = Number(bl.value);
+    if (!Number.isFinite(value)) return null;
+    baseLines.push({ attr: bl.attr, kind: bl.kind, value });
+  }
+
+  if (!raw.potential || !POTENTIAL_TYPES.includes(raw.potential.type)) return null;
+  const potValue = Number(raw.potential.value);
+  if (!Number.isFinite(potValue)) return null;
+
+  const name = typeof raw.name === 'string' && raw.name.trim() ? raw.name.slice(0, 60) : `${raw.color}${raw.shape}`;
+  return { shape: raw.shape, color: raw.color, baseLines, potential: { type: raw.potential.type, value: potValue }, name };
+}
+
 function importJson(evt) {
   const file = evt.target.files[0];
   if (!file) return;
@@ -609,15 +635,28 @@ function importJson(evt) {
   reader.onload = e => {
     try {
       const data = JSON.parse(e.target.result);
-      if (Array.isArray(data.stones)) {
-        stones = data.stones;
-        nextId = Math.max(1, ...stones.map(s => s.id + 1));
+      const rawList = Array.isArray(data.stones) ? data.stones : [];
+      const sanitized = [];
+      let skipped = 0;
+      for (const raw of rawList) {
+        const s = sanitizeStone(raw);
+        if (s) sanitized.push(s); else skipped++;
       }
-      if (data.charBase) charBase = data.charBase;
+      let id = 1;
+      sanitized.forEach(s => { s.id = id++; });
+      stones = sanitized;
+      nextId = id;
+
+      if (data.charBase && typeof data.charBase === 'object') {
+        const cb = {};
+        ATTRS.forEach(a => { cb[a] = Number(data.charBase[a]) || 0; });
+        charBase = cb;
+      }
+
       save();
       renderCharBaseGrid();
       renderStoneTable();
-      alert('匯入完成');
+      alert(skipped > 0 ? `匯入完成（${skipped} 筆資料格式不正確，已略過）` : '匯入完成');
     } catch(err) {
       alert('匯入失敗：檔案格式錯誤');
     }
@@ -971,7 +1010,7 @@ function renderResults(top) {
         <div>${i===0?'🏆 ':''}第 ${i+1} 名</div>
         <div class="score">${r.score.toFixed(2)}</div>
       </div>
-      <div>${r.combo.map(s => `<span class="stone-chip"><span class="tag tag-${s.color}">${s.color}</span> <span class="tag tag-${s.shape}">${s.shape}</span> ${s.name}</span>`).join('')}</div>
+      <div>${r.combo.map(s => `<span class="stone-chip"><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span> <span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span> ${escapeHtml(s.name)}</span>`).join('')}</div>
       <div class="attr-table">
         ${ATTRS.map(a => `<div class="attr-cell"><div class="name">${a}</div><div class="val">${r.finalTotals[a].toFixed(1)}</div></div>`).join('')}
       </div>
