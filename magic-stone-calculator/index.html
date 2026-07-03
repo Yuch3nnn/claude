@@ -221,7 +221,7 @@
   <div style="margin-top:14px; overflow-x:auto;">
     <table id="stoneTable">
       <thead>
-        <tr><th>名稱</th><th>造型</th><th>顏色</th><th>基礎屬性</th><th>潛能</th><th>操作</th></tr>
+        <tr><th>選</th><th>名稱</th><th>造型</th><th>顏色</th><th>基礎屬性</th><th>潛能</th><th>操作</th></tr>
       </thead>
       <tbody id="stoneTbody"></tbody>
     </table>
@@ -229,7 +229,18 @@
 </div>
 
 <div class="panel">
-  <h2>④ 最佳化目標</h2>
+  <h2>④ 手動組合驗證</h2>
+  <div class="hint">在上方魔石清單勾選剛好 5 顆，這裡直接算出這個組合的結果，方便跟遊戲實際數值互相核對。</div>
+  <div class="row" style="margin-top:8px; align-items:center;">
+    <span id="manualSelCount" class="hint">已選 0 / 5</span>
+    <button onclick="runManualCombo()">計算這 5 顆的結果</button>
+    <button class="secondary" onclick="clearManualSelection()">清空勾選</button>
+  </div>
+  <div id="manualResult" style="margin-top:14px;"></div>
+</div>
+
+<div class="panel">
+  <h2>⑤ 最佳化目標</h2>
   <div class="row">
     <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;">
       <input type="radio" name="mode" value="single" checked onchange="renderTargetInputs()"> 單一屬性最大化
@@ -242,7 +253,7 @@
 </div>
 
 <div class="panel">
-  <h2>⑤ 計算結果</h2>
+  <h2>⑥ 計算結果</h2>
   <div class="row">
     <button id="calcBtn" onclick="runCalc()">🔍 計算最佳 5 顆組合</button>
     <button class="secondary" onclick="copyAllExplains()">📋 複製全部結果文字（回饋用）</button>
@@ -380,8 +391,10 @@ function onProfileSelectChange() {
 }
 function refreshAllViews() {
   renderCharBaseGrid();
+  selectedStoneIds.clear();
   renderStoneTable();
   document.getElementById('results').innerHTML = '';
+  document.getElementById('manualResult').innerHTML = '';
   explainTexts = [];
 }
 function switchProfile(name) {
@@ -575,10 +588,16 @@ function clearAll() {
 
 function renderStoneTable() {
   const tbody = document.getElementById('stoneTbody');
+  const liveIds = new Set(stones.map(s => s.id));
+  for (const id of Array.from(selectedStoneIds)) {
+    if (!liveIds.has(id)) selectedStoneIds.delete(id);
+  }
   tbody.innerHTML = stones.map(s => {
     const baseTxt = s.baseLines.map(bl => `${escapeHtml(bl.attr)} ${bl.kind==='flat'?'+':'+'}${escapeHtml(bl.value)}${bl.kind==='percent'?'%':''}`).join('｜');
     const safeId = Number(s.id) || 0;
+    const checked = selectedStoneIds.has(s.id) ? 'checked' : '';
     return `<tr>
+      <td><input type="checkbox" ${checked} onchange="toggleSelect(${safeId}, this.checked)"></td>
       <td>${escapeHtml(s.name)}</td>
       <td><span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span></td>
       <td><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span></td>
@@ -591,6 +610,51 @@ function renderStoneTable() {
     </tr>`;
   }).join('');
   updateComboCountInfo();
+  updateManualSelCount();
+}
+
+// ---------- 手動組合驗證 ----------
+let selectedStoneIds = new Set();
+let manualExplainText = '';
+function toggleSelect(id, checked) {
+  if (checked) selectedStoneIds.add(id); else selectedStoneIds.delete(id);
+  updateManualSelCount();
+}
+function updateManualSelCount() {
+  const el = document.getElementById('manualSelCount');
+  if (el) el.textContent = `已選 ${selectedStoneIds.size} / 5`;
+}
+function clearManualSelection() {
+  selectedStoneIds.clear();
+  renderStoneTable();
+  document.getElementById('manualResult').innerHTML = '';
+}
+function runManualCombo() {
+  if (selectedStoneIds.size !== 5) { alert('請剛好勾選 5 顆魔石（目前已選 ' + selectedStoneIds.size + ' 顆）'); return; }
+  const combo = stones.filter(s => selectedStoneIds.has(s.id));
+  const valid = comboIsValid(combo);
+  const { finalTotals } = computeCombo(combo);
+  manualExplainText = explainCombo(combo);
+
+  const container = document.getElementById('manualResult');
+  container.innerHTML = `
+    <div class="result-card" style="${valid ? '' : 'border-color:var(--accent2);'}">
+      ${valid ? '' : '<div style="color:var(--accent2); font-size:12px; margin-bottom:8px;">⚠️ 這個組合違反「造型+基礎屬性 KEY 不可重複裝」規則（有兩顆魔石完全同 KEY），僅供測試參考，數值照樣算給你看。</div>'}
+      <div>${combo.map(s => `<span class="stone-chip"><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span> <span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span> ${escapeHtml(s.name)}</span>`).join('')}</div>
+      <div class="attr-table">
+        ${ATTRS.map(a => `<div class="attr-cell"><div class="name">${a}</div><div class="val">${finalTotals[a].toFixed(1)}</div></div>`).join('')}
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <button class="secondary small" onclick="toggleManualExplain()">顯示/隱藏計算明細</button>
+        <button class="secondary small" onclick="copyToClipboard(manualExplainText)">複製此組文字</button>
+      </div>
+      <pre id="manualExplainPre" style="display:none; background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; margin-top:8px; font-size:11px; white-space:pre-wrap; max-height:400px; overflow:auto;">${escapeHtml(manualExplainText)}</pre>
+    </div>
+  `;
+}
+function toggleManualExplain() {
+  const el = document.getElementById('manualExplainPre');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 // ---------- import/export ----------
