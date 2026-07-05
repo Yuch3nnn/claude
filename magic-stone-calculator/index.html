@@ -299,7 +299,7 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.06.2";
+const BUILT_VERSION = "2026.07.06.3";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
@@ -841,7 +841,8 @@ function findDominatedStones(candidateList) {
   return dominated;
 }
 function stoneSummaryChip(s) {
-  return `<span class="stone-chip"><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span> <span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span> ${escapeHtml(s.name)}｜潛能 ${escapeHtml(s.potential.type)}(${escapeHtml(s.potential.value)})</span>`;
+  const baseTxt = s.baseLines.map(bl => `${escapeHtml(bl.attr)} +${escapeHtml(bl.value)}${bl.kind==='percent'?'%':''}`).join('｜');
+  return `<span class="stone-chip"><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span> <span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span> ${escapeHtml(s.name)}｜基礎屬性 ${baseTxt}｜潛能 ${escapeHtml(s.potential.type)}(${escapeHtml(s.potential.value)})</span>`;
 }
 function checkDeletable() {
   const dominated = findDominatedStones();
@@ -1216,6 +1217,9 @@ function checkVersion() {
 
 // ---------- 更新日誌 ----------
 const CHANGELOG = [
+  { version: '2026.07.06.3', items: [
+    '檢查可刪除魔石的比較列表，現在也會顯示基礎屬性數值，方便核對',
+  ]},
   { version: '2026.07.06.2', items: [
     '修正：檢查可刪除魔石時，現在會要求基礎屬性數值也完全相同才判定可刪除（避免金/紫等基礎屬性數值不同時被誤判）',
   ]},
