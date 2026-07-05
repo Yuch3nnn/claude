@@ -299,7 +299,7 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.06.1";
+const BUILT_VERSION = "2026.07.06.2";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
@@ -813,13 +813,17 @@ function comboIsValid(combo) {
 }
 
 // ---------- 找出可刪除的重複魔石 ----------
-// 只比較「造型+完整基礎屬性組合（同 KEY）且潛能類型也相同」的魔石，
-// 因為潛能類型不同時（例如同印契合 vs 潛能共鳴）運作方式差很多，
-// 換到不同組合裡表現會不一樣，沒辦法單純比潛能數值大小判斷誰沒用。
+// 只比較「造型+完整基礎屬性（含數值）都一模一樣、且潛能類型也相同」的魔石，
+// 才能單純比潛能數值大小判斷誰沒用——如果基礎屬性數值不同（例如金比紫高），
+// 潛能數值較低的那顆仍可能因為基礎屬性較高而整體更好用，不能只看潛能就判定可刪除。
+function stoneFullValueKey(s) {
+  const parts = s.baseLines.map(bl => `${bl.attr}:${bl.kind}:${bl.value}`).sort();
+  return s.shape + '|' + parts.join(',');
+}
 function findDominatedStones(candidateList) {
   const groups = new Map();
   (candidateList || stones).forEach(s => {
-    const key = stoneTypeKey(s) + '|' + s.potential.type;
+    const key = stoneFullValueKey(s) + '|' + s.potential.type;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(s);
   });
@@ -1212,6 +1216,9 @@ function checkVersion() {
 
 // ---------- 更新日誌 ----------
 const CHANGELOG = [
+  { version: '2026.07.06.2', items: [
+    '修正：檢查可刪除魔石時，現在會要求基礎屬性數值也完全相同才判定可刪除（避免金/紫等基礎屬性數值不同時被誤判）',
+  ]},
   { version: '2026.07.06.1', items: [
     '新增：檢查可刪除魔石（同造型＋同基礎屬性＋同潛能類型，數值較低或相等的會列出建議刪除）',
     '新增：新增魔石時，如果已有條件相同但數值更好（或相等）的魔石，會先詢問是否仍要新增',
