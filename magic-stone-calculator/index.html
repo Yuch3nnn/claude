@@ -223,7 +223,9 @@
     <button class="secondary" onclick="document.getElementById('importFile').click()">匯入 JSON</button>
     <input type="file" id="importFile" accept=".json" style="display:none;" onchange="importJson(event)">
     <button class="danger" onclick="clearAll()">清空全部</button>
+    <button class="secondary" onclick="checkDeletable()">🔍 檢查可刪除魔石</button>
   </div>
+  <div id="deletableResult" style="margin-top:10px;"></div>
 
   <div style="margin-top:14px; overflow-x:auto;">
     <table id="stoneTable">
@@ -291,12 +293,13 @@
   </ul>
 </div>
 
-<div class="hint" id="versionFooter" style="text-align:right; margin-top:10px;">版本：載入中...</div>
+<div class="hint" id="versionFooter" style="text-align:right; margin-top:10px;">版本：載入中... <a href="#" onclick="toggleChangelog(); return false;" style="color:var(--accent);">最近更新</a></div>
+<div id="changelogBox" style="display:none; background:var(--panel2); border:1px solid var(--border); border-radius:8px; padding:12px; margin-top:8px; font-size:12px;"></div>
 
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.03.4";
+const BUILT_VERSION = "2026.07.06.1";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
@@ -540,6 +543,17 @@ function addStone() {
     baseLines,
     potential: {type: potType, value: potVal}
   };
+
+  const better = findDominatedStones([...stones.filter(s => s.id !== stone.id), stone])
+    .find(d => d.stone.id === stone.id);
+  if (better && !confirm(
+    `你已經有一顆造型／基礎屬性／潛能類型都相同、但數值較好（或相等）的魔石：\n` +
+    `${better.betterStone.name}｜潛能 ${better.betterStone.potential.type}(${better.betterStone.potential.value})\n\n` +
+    `這顆新魔石：潛能 ${stone.potential.type}(${stone.potential.value})\n\n` +
+    `仍要新增這顆嗎？`
+  )) {
+    return;
+  }
 
   if (editingId !== null) {
     const idx = stones.findIndex(s => s.id === editingId);
@@ -796,6 +810,51 @@ function comboIsValid(combo) {
     seen.add(key);
   }
   return true;
+}
+
+// ---------- 找出可刪除的重複魔石 ----------
+// 只比較「造型+完整基礎屬性組合（同 KEY）且潛能類型也相同」的魔石，
+// 因為潛能類型不同時（例如同印契合 vs 潛能共鳴）運作方式差很多，
+// 換到不同組合裡表現會不一樣，沒辦法單純比潛能數值大小判斷誰沒用。
+function findDominatedStones(candidateList) {
+  const groups = new Map();
+  (candidateList || stones).forEach(s => {
+    const key = stoneTypeKey(s) + '|' + s.potential.type;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(s);
+  });
+  const dominated = [];
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    let best = group[0];
+    for (const s of group) { if (s.potential.value > best.potential.value) best = s; }
+    for (const s of group) {
+      if (s.id !== best.id && s.potential.value <= best.potential.value) {
+        dominated.push({ stone: s, betterStone: best });
+      }
+    }
+  }
+  return dominated;
+}
+function stoneSummaryChip(s) {
+  return `<span class="stone-chip"><span class="tag tag-${escapeHtml(s.color)}">${escapeHtml(s.color)}</span> <span class="tag tag-${escapeHtml(s.shape)}">${escapeHtml(s.shape)}</span> ${escapeHtml(s.name)}｜潛能 ${escapeHtml(s.potential.type)}(${escapeHtml(s.potential.value)})</span>`;
+}
+function checkDeletable() {
+  const dominated = findDominatedStones();
+  const container = document.getElementById('deletableResult');
+  if (dominated.length === 0) {
+    container.innerHTML = '<div class="hint">目前沒有找到可刪除的重複魔石（同造型＋同基礎屬性＋同潛能類型，且數值較低或相等）。</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="hint" style="margin-bottom:6px;">以下魔石造型／基礎屬性／潛能類型都跟另一顆完全相同，但潛能數值較低或相等，建議可以刪除：</div>
+    ${dominated.map(d => `
+      <div class="result-card" style="padding:8px 12px; margin-bottom:6px;">
+        ${stoneSummaryChip(d.stone)} 不如 ${stoneSummaryChip(d.betterStone)}
+        <button class="danger small" onclick="deleteStone(${Number(d.stone.id) || 0}); checkDeletable();" style="margin-left:8px;">刪除這顆</button>
+      </div>
+    `).join('')}
+  `;
 }
 
 // ---------- calc engine ----------
@@ -1144,11 +1203,38 @@ function checkVersion() {
     .then(r => r.json())
     .then(data => {
       const footer = document.getElementById('versionFooter');
-      if (footer) footer.textContent = `版本：${BUILT_VERSION}（伺服器最新：${data.version}）`;
+      if (footer) footer.innerHTML = `版本：${BUILT_VERSION}（伺服器最新：${data.version}） <a href="#" onclick="toggleChangelog(); return false;" style="color:var(--accent);">最近更新</a>`;
       const banner = document.getElementById('versionBanner');
       banner.style.display = (data.version !== BUILT_VERSION) ? 'flex' : 'none';
     })
     .catch(() => {});
+}
+
+// ---------- 更新日誌 ----------
+const CHANGELOG = [
+  { version: '2026.07.06.1', items: [
+    '新增：檢查可刪除魔石（同造型＋同基礎屬性＋同潛能類型，數值較低或相等的會列出建議刪除）',
+    '新增：新增魔石時，如果已有條件相同但數值更好（或相等）的魔石，會先詢問是否仍要新增',
+    '新增：頁尾「最近更新」可展開查看版本更新項目',
+  ]},
+  { version: '2026.07.03.4', items: [
+    '魔石清單依造型分組、同造型內紅→金→紫排序',
+    '有魔石資料時關閉分頁會提醒使用者記得匯出 JSON',
+    '匯出 JSON 的預設檔名帶時間戳記，方便區分不同檔案',
+  ]},
+];
+function toggleChangelog() {
+  const box = document.getElementById('changelogBox');
+  if (box.style.display === 'none') {
+    box.innerHTML = CHANGELOG.map(c => `
+      <div style="margin-bottom:8px;">
+        <b>${escapeHtml(c.version)}</b>
+        <ul style="margin:4px 0 0 18px; padding:0;">${c.items.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ul>
+      </div>`).join('');
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
 }
 
 // ---------- 關閉前提醒匯出 JSON ----------
