@@ -259,6 +259,20 @@
     </label>
   </div>
   <div id="targetInputs" style="margin-top:10px;"></div>
+
+  <div class="row" style="margin-top:14px;">
+    <div class="field" style="max-width:280px;">
+      <label>套裝組合限定（選填）</label>
+      <select id="setBonusFilter" onchange="updateComboCountInfo()">
+        <option value="">不限定，自由搭配基礎數值最大化</option>
+        <option value="A">A：圓＋三角＋菱形＋星星型＋月亮型</option>
+        <option value="B">B：圓＋三角＋六邊形＋星星型＋月亮型</option>
+        <option value="C">C：三角×2＋六邊形＋星星型＋月亮型</option>
+        <option value="D">D：圓×2＋菱形＋星星型＋月亮型</option>
+      </select>
+    </div>
+  </div>
+  <div class="hint">選擇特定套裝組合後，窮舉只會在符合該造型組成的魔石裡挑選，再從中找數值最大化的搭配（不管套裝實際效果是什麼，只卡造型）。</div>
 </div>
 
 <div class="panel">
@@ -290,6 +304,7 @@
     <li>潛能共鳴：組合中若有多顆潛能共鳴魔石，<b>數值直接加總</b>生效（已用實測數據驗證：兩顆 13.4%+15.8% 相加算出的結果與遊戲實際數值吻合）。</li>
     <li>同源潛能：組合中任兩顆（或多顆）潛能類型相同的魔石，會依「其餘同類型顆數」各自獲得加成；若組合中有多顆同源潛能魔石，比照潛能共鳴的實測結果<b>同樣改為數值加總</b>（此規則尚未實測驗證，先依一致性推測）。潛能共鳴與同源潛能本身不參與同源判定，也不會被潛能共鳴/同源潛能加成。</li>
     <li>最終數值公式：<code>總值 = (角色素質 + 固定基礎屬性加總 + 精通加總) × (1 + 百分比基礎屬性加總% + 增幅加總%)</code></li>
+    <li><b>套裝組合限定（選填）</b>：目前只記錄 4 種套裝的「造型組成」（A：圓+三角+菱形+星星型+月亮型／B：圓+三角+六邊形+星星型+月亮型／C：三角×2+六邊形+星星型+月亮型／D：圓×2+菱形+星星型+月亮型），套裝實際觸發的技能效果與數值不管、也不計入計算，選定後只是把窮舉範圍限制在符合該造型組成的魔石裡，再照樣做基礎數值最大化。</li>
   </ul>
 </div>
 
@@ -299,10 +314,17 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.06.3";
+const BUILT_VERSION = "2026.07.06.4";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
+// 套裝加成的造型組成（實際效果/數值不管，只卡造型）。
+const SET_BONUS_PATTERNS = {
+  A: ['圓','三角','菱形','星星型','月亮型'],
+  B: ['圓','三角','六邊形','星星型','月亮型'],
+  C: ['三角','三角','六邊形','星星型','月亮型'],
+  D: ['圓','圓','菱形','星星型','月亮型'],
+};
 const COLORS = ['紫','金','紅'];
 const MASTERY_TYPES = ATTRS.map(a => a + '精通');
 const AMP_TYPES = ATTRS.map(a => a + '增幅');
@@ -1032,13 +1054,79 @@ function validComboTotal(groups, k) {
   }
   return dp[k];
 }
+// 把 KEY 分組再依造型分桶，套裝組合限定模式要「同造型挑 k 顆不同 KEY 代表」時會用到。
+function buildShapeGroups(groups) {
+  const byShape = {};
+  groups.forEach(g => {
+    const shape = g[0].shape;
+    if (!byShape[shape]) byShape[shape] = [];
+    byShape[shape].push(g);
+  });
+  return byShape;
+}
+
+// 產生一個「從 groups 裡選 k 個不同組、每組各選 1 顆代表」的窮舉器。
+function makeGroupPicker(groups, k) {
+  const n = groups.length;
+  const total = (n < k) ? 0 : validComboTotal(groups, k);
+  let groupIdx, repIdx;
+  function reset() {
+    groupIdx = Array.from({length: k}, (_, i) => i);
+    repIdx = new Array(k).fill(0);
+  }
+  reset();
+  return {
+    total,
+    current: () => groupIdx.map((gi, slot) => groups[gi][repIdx[slot]]),
+    advance: () => {
+      for (let slot = k - 1; slot >= 0; slot--) {
+        repIdx[slot]++;
+        if (repIdx[slot] < groups[groupIdx[slot]].length) return true;
+        repIdx[slot] = 0;
+      }
+      return nextCombination(groupIdx, n, k);
+    },
+    reset,
+  };
+}
+
+// 把多個獨立的 picker（例如套裝限定時，每種造型各自的 picker）組成一個總窮舉器。
+function combinePickers(pickers) {
+  const total = pickers.reduce((acc, p) => acc * p.total, 1);
+  return {
+    total,
+    current: () => pickers.flatMap(p => p.current()),
+    advance: () => {
+      for (let i = pickers.length - 1; i >= 0; i--) {
+        if (pickers[i].advance()) return true;
+        pickers[i].reset();
+      }
+      return false;
+    },
+  };
+}
+
+// 依目前「套裝組合限定」下拉選單的選擇，組出對應的窮舉器。
+function buildActivePicker() {
+  const groups = buildGroups();
+  const patternKey = document.getElementById('setBonusFilter').value;
+  if (!patternKey) {
+    return { picker: makeGroupPicker(groups, 5), groupCount: groups.length };
+  }
+  const pattern = SET_BONUS_PATTERNS[patternKey];
+  const shapeCounts = {};
+  pattern.forEach(s => shapeCounts[s] = (shapeCounts[s] || 0) + 1);
+  const byShape = buildShapeGroups(groups);
+  const pickers = Object.entries(shapeCounts).map(([shape, k]) => makeGroupPicker(byShape[shape] || [], k));
+  return { picker: combinePickers(pickers), groupCount: groups.length };
+}
+
 function updateComboCountInfo() {
   const n = stones.length;
   const info = document.getElementById('comboCountInfo');
   if (n < 5) { info.textContent = `目前僅 ${n} 顆魔石，至少需要 5 顆才能計算`; return; }
-  const groups = buildGroups();
-  const total = validComboTotal(groups, 5);
-  info.textContent = `共 ${n} 顆魔石（${groups.length} 種不重複造型屬性組合），將計算 ${total.toLocaleString()} 種合法組合`;
+  const { picker, groupCount } = buildActivePicker();
+  info.textContent = `共 ${n} 顆魔石（${groupCount} 種不重複造型屬性組合），將計算 ${picker.total.toLocaleString()} 種合法組合`;
 }
 
 function nextCombination(idx, n, k) {
@@ -1067,9 +1155,8 @@ function runCalc() {
     return;
   }
 
-  const groups = buildGroups();
-  const numGroups = groups.length;
-  const total = validComboTotal(groups, 5);
+  const { picker } = buildActivePicker();
+  const total = picker.total;
   const mode = document.querySelector('input[name=mode]:checked').value;
   const TOP_K = 10;
   const top = []; // {score, combo, finalTotals}
@@ -1108,48 +1195,25 @@ function runCalc() {
       warnBox.textContent = `⚠️ 計算已取消（已處理 ${processed.toLocaleString()} / ${total.toLocaleString()} 種組合，以下為目前找到的暫時結果）。`;
     } else if (total === 0) {
       warnBox.style.display = 'block';
-      warnBox.textContent = `⚠️ 沒有任何合法組合：清單中只有 ${numGroups} 種不重複的「造型+基礎屬性組合」KEY，不足 5 種，無法湊出 5 顆互不衝突的組合。`;
+      warnBox.textContent = `⚠️ 沒有任何合法組合：目前魔石清單（或選定的套裝組合限定）湊不出 5 顆互不衝突的合法組合。`;
     } else {
       warnBox.style.display = 'none';
     }
     renderResults(top);
   }
 
-  if (numGroups < 5) { finish(false); return; }
-
-  // groupIdx：從 numGroups 個 KEY 分組中選出 5 組（互不相同）。
-  // repIdx：在這 5 組各自內部，目前選中的代表魔石索引（像里程表一樣逐一跑遍該組內所有候選）。
-  const groupIdx = [0, 1, 2, 3, 4];
-  let repIdx = [0, 0, 0, 0, 0];
-
-  function currentCombo() {
-    return [
-      groups[groupIdx[0]][repIdx[0]],
-      groups[groupIdx[1]][repIdx[1]],
-      groups[groupIdx[2]][repIdx[2]],
-      groups[groupIdx[3]][repIdx[3]],
-    groups[groupIdx[4]][repIdx[4]],
-    ];
-  }
-  function advance() {
-    for (let slot = 4; slot >= 0; slot--) {
-      repIdx[slot]++;
-      if (repIdx[slot] < groups[groupIdx[slot]].length) return true;
-      repIdx[slot] = 0;
-    }
-    return nextCombination(groupIdx, numGroups, 5);
-  }
+  if (total === 0) { finish(false); return; }
 
   function processChunk() {
     if (calcCancelled) { finish(true); return; }
     const chunkStart = performance.now();
     while (performance.now() - chunkStart < 40) {
-      const combo = currentCombo();
+      const combo = picker.current();
       const {finalTotals} = computeCombo(combo);
       const score = scoreOf(finalTotals, mode);
       tryInsert({score, combo, finalTotals});
       processed++;
-      if (!advance()) { finish(false); return; }
+      if (!picker.advance()) { finish(false); return; }
     }
     const pct = total > 0 ? ((processed / total) * 100).toFixed(1) : '100.0';
     progressBar.style.width = pct + '%';
