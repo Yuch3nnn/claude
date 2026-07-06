@@ -135,13 +135,24 @@
 </div>
 
 <div class="panel">
-  <h2>② 角色基本素質</h2>
+  <h2>② 使用 SOP：魔石與遊戲內資料同步</h2>
+  <div class="hint" style="margin-bottom:10px;">目前計算器沒辦法跟遊戲自動同步魔石資料，需要靠遊戲本身的「鎖定」機制手動管理，避免重複輸入或誤刪。</div>
+  <ol style="font-size:13px; color:var(--text); line-height:1.8; margin:0; padding-left:20px;">
+    <li><b>已經輸入到計算器的魔石</b>：到遊戲裡把該顆魔石<b>鎖定</b>。一方面看到鎖定就知道「已經記錄過了，不用再輸入一次」；另一方面鎖定的道具遊戲會保護不被誤刪/異動，資料才不會跟計算器對不上。</li>
+    <li><b>新抽到、尚未鎖定的魔石</b>：先評估數值好不好、值不值得留（可以用下面「⑤ 手動組合驗證」或「⑦ 計算結果」的最佳化來評估）。決定要用的話，才輸入進計算器，然後回遊戲裡鎖定它，變成第 1 點的狀態。</li>
+    <li><b>清理不要的魔石</b>：所有還沒鎖定的魔石，代表計算器裡沒有記錄、也確定不需要，直接用遊戲本身「一鍵刪除未鎖定道具」之類的功能清掉即可，不會誤刪到已經記錄在計算器裡的魔石。</li>
+  </ol>
+  <div class="hint" style="margin-top:10px;">如果之後想在這裡補上遊戲畫面截圖（例如鎖定按鈕在哪、一鍵刪除選單長怎樣），跟我說一聲，把截圖傳給我就能加進來。</div>
+</div>
+
+<div class="panel">
+  <h2>③ 角色基本素質</h2>
   <div class="hint" style="margin-bottom:10px;">請填入角色<b>未啟用專精</b>時的迅擊/強襲/馭傷/韌性/壁壘/馴禦數值（如果角色有神器開關，記得依神器開關狀態調整成對應的數值再填入）。</div>
   <div class="grid6" id="charBaseGrid"></div>
 </div>
 
 <div class="panel">
-  <h2>③ 魔石清單</h2>
+  <h2>④ 魔石清單</h2>
 
   <div class="form-grid">
     <div class="field">
@@ -238,7 +249,7 @@
 </div>
 
 <div class="panel">
-  <h2>④ 手動組合驗證</h2>
+  <h2>⑤ 手動組合驗證</h2>
   <div class="hint">在上方魔石清單勾選剛好 5 顆，這裡直接算出這個組合的結果，方便跟遊戲實際數值互相核對。</div>
   <div class="row" style="margin-top:8px; align-items:center;">
     <span id="manualSelCount" class="hint">已選 0 / 5</span>
@@ -249,7 +260,7 @@
 </div>
 
 <div class="panel">
-  <h2>⑤ 最佳化目標</h2>
+  <h2>⑥ 最佳化目標</h2>
   <div class="row">
     <label style="display:flex;align-items:center;gap:6px;color:var(--text);font-size:13px;">
       <input type="radio" name="mode" value="single" checked onchange="renderTargetInputs()"> 單一屬性最大化
@@ -276,7 +287,7 @@
 </div>
 
 <div class="panel">
-  <h2>⑥ 計算結果</h2>
+  <h2>⑦ 計算結果</h2>
   <div class="row">
     <button id="calcBtn" onclick="runCalc()">🔍 計算最佳 5 顆組合</button>
     <button class="secondary" onclick="copyAllExplains()">📋 複製全部結果文字（回饋用）</button>
@@ -314,7 +325,7 @@
 <script>
 // 每次部署都要同步更新這裡跟 version.json 的版本號，
 // 這樣使用者才能被提醒「你看到的是快取的舊頁面」。
-const BUILT_VERSION = "2026.07.06.5";
+const BUILT_VERSION = "2026.07.06.6";
 
 const ATTRS = ['迅擊','強襲','馭傷','韌性','壁壘','馴禦'];
 const SHAPES = ['圓','三角','菱形','六邊形','星星型','月亮型'];
@@ -1281,6 +1292,9 @@ function checkVersion() {
 
 // ---------- 更新日誌 ----------
 const CHANGELOG = [
+  { version: '2026.07.06.6', items: [
+    '新增：「使用 SOP」面板，說明如何用遊戲的鎖定機制手動同步已記錄/未記錄的魔石',
+  ]},
   { version: '2026.07.06.5', items: [
     '新增：「套裝組合限定」下拉選單，可選 A/B/C/D 四種套裝造型組成，窮舉時只在符合的魔石裡找數值最大化搭配（不管套裝實際效果與數值）',
   ]},
