@@ -23,3 +23,11 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# AI 助理資料（截圖、日報、設定）
+config.json
+data/
+reports/
+
+# 每台機器各自的本機開發伺服器設定（路徑因人而異，不應共用）
+.claude/launch.json
