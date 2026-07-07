@@ -15,6 +15,10 @@ node_modules/
 dist/
 .next/
 
+# .NET
+bin/
+obj/
+
 # 系統檔案
 .DS_Store
 Thumbs.db
